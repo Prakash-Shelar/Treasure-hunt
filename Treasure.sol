@@ -171,6 +171,8 @@ contract TreasureHuntGame is Ownable {
 
     /// @dev Error thrown when attempting to use a power-up without purchasing it
     error PowerUpNotPurchased();
+
+    error InvalidKey();
     
     /// @dev Event emitted when a new treasure hunt is created
     event TreasureCreated(uint256 huntId, uint256 treasureValue);
@@ -195,6 +197,7 @@ contract TreasureHuntGame is Ownable {
         address winner;                                 // Address of the winner
         mapping(address => bool) powerUpHolders;        // Mapping to track players who purchased power-ups
         bool treasureClaimed;                           // Flag to indicate if the treasure is claimed
+        uint256 trasureKey;
     }
 
     /// @dev Mapping to store treasure hunts
@@ -227,7 +230,7 @@ contract TreasureHuntGame is Ownable {
      * @param _treasureValue Value of the treasure.
      * @param _clues Array of clues for the treasure hunt.
      */
-    function createTreasureHunt(uint256 _treasureValue, string[] memory _clues) public payable onlyOwner {
+    function createTreasureHunt(uint256 _treasureValue, string[] memory _clues, uint256 _trasureKey) public payable onlyOwner {
         if(_clues.length < 1){
             revert CluesMustBeProvided();
         }
@@ -238,6 +241,7 @@ contract TreasureHuntGame is Ownable {
         currentHuntId++;
         treasureHunts[currentHuntId].treasureValue = _treasureValue;
         treasureHunts[currentHuntId].clues = _clues;
+        treasureHunts[currentHuntId].trasureKey = _trasureKey;
 
         emit TreasureCreated(currentHuntId, _treasureValue);
     }
@@ -260,7 +264,7 @@ contract TreasureHuntGame is Ownable {
      * @param _huntId The ID of the treasure hunt.
      * @param _answer The answer submitted by the player.
      */
-    function submitAnswer(uint256 _huntId, bytes32 _answer) public isValidHunt(_huntId) {
+    function submitAnswer(uint256 _huntId, bytes32 _answer) public isValidHunt(_huntId) returns(uint256) {
         TreasureHunt storage hunt = treasureHunts[_huntId];
       
         if(keccak256(bytes(hunt.clues[hunt.playerClueIndex[msg.sender]])) != _answer){
@@ -268,18 +272,20 @@ contract TreasureHuntGame is Ownable {
         }
         if (hunt.playerClueIndex[msg.sender] == hunt.clues.length - 1) {
             hunt.winner = msg.sender;
+            return hunt.trasureKey;
         } else {
             hunt.playerClueIndex[msg.sender]++;
         }
 
         emit AnswerSubmitted(_huntId, msg.sender);
+        return 0;
     }
 
     /**
      * @dev Skips the current clue in the treasure hunt using a power-up.
      * @param _huntId The ID of the treasure hunt.
      */
-    function skipCurrentClue(uint256 _huntId) public isValidHunt(_huntId){
+    function skipCurrentClue(uint256 _huntId) public isValidHunt(_huntId) returns(uint256){
         TreasureHunt storage hunt = treasureHunts[_huntId];
 
         if(!hunt.powerUpHolders[msg.sender]){
@@ -287,23 +293,28 @@ contract TreasureHuntGame is Ownable {
         }
         if (hunt.playerClueIndex[msg.sender] == hunt.clues.length - 1) {
             hunt.winner = msg.sender;
+            return hunt.trasureKey;
         } else {
             hunt.playerClueIndex[msg.sender]++;
         }
         hunt.powerUpHolders[msg.sender] = false;
 
         emit SkippedCurrentClue(_huntId, msg.sender);
+        return 0;
     }
 
     /**
      * @dev Claims the treasure for the winner of the treasure hunt.
      * @param _huntId The ID of the treasure hunt.
      */
-    function claimTreasure(uint256 _huntId) public isValidHunt(_huntId) payable {
+    function claimTreasure(uint256 _huntId, uint256 _trasureKey) public isValidHunt(_huntId) payable {
         TreasureHunt storage hunt = treasureHunts[_huntId];
        
         if(hunt.winner != msg.sender){
             revert NotWinner();
+        }
+        if(_trasureKey != hunt.trasureKey){
+            revert InvalidKey();
         }
 
         payable(msg.sender).transfer(hunt.treasureValue);
